@@ -208,37 +208,77 @@ class AudioManager:
             return sound.get_num_channels() > 0
         return False
 
+    def load_dialogue_file(self, filepath: str) -> Optional[pygame.mixer.Sound]:
+        """
+        Load a dialogue audio file.
+
+        Args:
+            filepath: Path to the audio file
+
+        Returns:
+            pygame.mixer.Sound object or None if loading fails
+        """
+        try:
+            sound = pygame.mixer.Sound(filepath)
+            return sound
+        except (FileNotFoundError, pygame.error) as e:
+            print(f"Could not load dialogue from {filepath}: {e}")
+            return None
+
     def preload_dialogue(
         self, dialogues: list[tuple[str, str, str]]
-    ) -> Dict[str, pygame.mixer.Sound]:
+    ) -> tuple[Dict[str, pygame.mixer.Sound], Dict[str, int]]:
         """
-        Preload all dialogue audio in background.
+        Preload all dialogue audio from files.
 
         Args:
             dialogues: List of (text, speaker, voice) tuples
 
         Returns:
-            Dictionary mapping text to Sound objects
+            Tuple of (Dictionary mapping text to Sound objects, Dictionary mapping text to duration in ms)
         """
         dialogue_audio = {}
+        dialogue_durations = {}
+        
+        # Mapping of dialogue text to file paths
+        dialogue_files = {
+            "WATCH IT!_char1": "assets/01_01_watch_it.wav",
+            "WATCH IT!_char2": "assets/01_02_watch_it.wav",
+            "Just kidding, running into people is fun!": "assets/02_01_just_kidding.wav",
+            "Hey ya!": "assets/03_02_hey_ya.wav",
+            "Okay I have to go to work": "assets/04_01_go_to_work.wav",
+            "I don't care": "assets/05_02_i_dont_care.wav",
+        }
+        
+        print("\nLoading dialogue audio files...")
+        for text, speaker, _ in dialogues:
+            if text == "WATCH IT!":
+                # Load both character versions for simultaneous playback
+                char1_sound = self.load_dialogue_file(dialogue_files["WATCH IT!_char1"])
+                char2_sound = self.load_dialogue_file(dialogue_files["WATCH IT!_char2"])
+                if char1_sound and char2_sound:
+                    # Store both sounds as a tuple
+                    dialogue_audio[text] = (char1_sound, char2_sound)
+                    # Use the longer duration of the two
+                    duration = max(
+                        int(char1_sound.get_length() * 1000),
+                        int(char2_sound.get_length() * 1000)
+                    )
+                    dialogue_durations[text] = duration
+                    print(f"✓ Loaded: {text} (both characters, {duration}ms)")
+            else:
+                # Load single character dialogue
+                if text in dialogue_files:
+                    sound = self.load_dialogue_file(dialogue_files[text])
+                    if sound:
+                        dialogue_audio[text] = sound
+                        duration = int(sound.get_length() * 1000)
+                        dialogue_durations[text] = duration
+                        print(f"✓ Loaded: {text} ({duration}ms)")
+        
+        if dialogue_audio:
+            print(f"✓ Successfully loaded {len(dialogue_audio)} dialogue clips\n")
+        else:
+            print("⚠️  No dialogue files loaded - animation will run silently\n")
 
-        def generate_all():
-            if not self.openai_client:
-                print("\nℹ️  TTS not available - animation will run silently")
-                return
-                
-            print("\nGenerating dialogue audio...")
-            for text, _, voice in dialogues:
-                sound = self.generate_tts_audio(text, voice)
-                if sound:
-                    dialogue_audio[text] = sound
-            
-            if dialogue_audio:
-                print(f"✓ Successfully generated {len(dialogue_audio)} dialogue clips\n")
-
-        # Start audio generation in background
-        audio_thread = threading.Thread(target=generate_all)
-        audio_thread.daemon = True
-        audio_thread.start()
-
-        return dialogue_audio
+        return dialogue_audio, dialogue_durations

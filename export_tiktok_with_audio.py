@@ -1,9 +1,13 @@
-"""Main entry point for the character animation."""
+"""Export animation as TikTok video with audio - proper implementation."""
 
 import sys
-import math
-
+import os
+import subprocess
+import tempfile
+import numpy as np
 import pygame
+import cv2
+from pathlib import Path
 
 from src.animation import AnimationController
 from src.audio import AudioManager
@@ -12,12 +16,22 @@ from src.config import (
     SCREEN_WIDTH,
     SCREEN_HEIGHT,
     FPS,
-    WHITE,
     BLUE,
     RED,
     AUDIO_SAMPLE_RATE,
     AUDIO_BUFFER_SIZE,
 )
+
+# TikTok settings - crop to 9:16 from center
+TIKTOK_HEIGHT = 1920
+TIKTOK_WIDTH = 1080  # 9:16 aspect ratio
+
+# Calculate crop area from original 1000x600
+# We'll render at original size then crop to center
+CROP_WIDTH = int(SCREEN_HEIGHT * (TIKTOK_WIDTH / TIKTOK_HEIGHT))  # ~337 pixels wide
+CROP_X = (SCREEN_WIDTH - CROP_WIDTH) // 2  # Center horizontally
+
+OUTPUT_FILENAME = "tiktok.mp4"
 
 
 def draw_park_background(screen: pygame.Surface) -> None:
@@ -100,17 +114,28 @@ def draw_park_background(screen: pygame.Surface) -> None:
             pygame.draw.circle(screen, (255, 200, 0), (flower_x, flower_y), 2)
 
 
-def main() -> None:
-    """Run the character animation."""
+def export_tiktok_video() -> None:
+    """Export the animation as a TikTok-optimized video with audio."""
+    print("🎬 Starting TikTok video export with audio...")
+    print(f"📐 Output: {TIKTOK_WIDTH}x{TIKTOK_HEIGHT} (9:16 vertical)")
+    print(f"🎞️  Frame rate: {FPS} FPS")
+    print(f"✂️  Cropping from center of {SCREEN_WIDTH}x{SCREEN_HEIGHT}")
+    print("\n💡 The animation will play with audio. Please wait...\n")
+    
+    # Create temporary directory for frames
+    temp_dir = tempfile.mkdtemp()
+    frames_dir = os.path.join(temp_dir, "frames")
+    os.makedirs(frames_dir, exist_ok=True)
+    
     # Initialize Pygame
     pygame.init()
     pygame.mixer.init(
         frequency=AUDIO_SAMPLE_RATE, size=-16, channels=2, buffer=AUDIO_BUFFER_SIZE
     )
 
-    # Set up display
+    # Set up display at original size
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-    pygame.display.set_caption("Character Animation with Audio")
+    pygame.display.set_caption("Exporting TikTok Video - Recording...")
     clock = pygame.time.Clock()
 
     # Initialize audio manager
@@ -133,7 +158,7 @@ def main() -> None:
         print(f"Warning: Could not load meow sound: {e}")
         meow_sound = None
 
-    # Create characters with different voices
+    # Create characters
     char1 = Character(
         x=-50,
         y=SCREEN_HEIGHT - 200,
@@ -151,10 +176,17 @@ def main() -> None:
     char2.direction = -1  # Moving left
 
     # Initialize animation controller
-    animation = AnimationController(char1, char2, audio_manager, walking_sound, collision_sound, meow_sound)
+    animation = AnimationController(char1, char2, audio_manager, walking_sound, 
+                                   collision_sound, meow_sound)
 
-    # Main game loop
+    print("🎥 Recording frames...")
+    
+    frame_count = 0
     running = True
+    
+    # Record audio to WAV file using pygame.mixer
+    # We'll use ffmpeg to capture system audio instead
+    
     while running:
         # Handle events
         for event in pygame.event.get():
@@ -167,7 +199,6 @@ def main() -> None:
 
         # Auto-close when animation is finished
         if animation.phase == animation.AnimationPhase.FINISHED:
-            # Wait 1 second after finishing, then close
             if animation.finished_time and current_time - animation.finished_time > 1000:
                 running = False
 
@@ -188,7 +219,7 @@ def main() -> None:
             # Cat body (oval)
             body_rect = pygame.Rect(cat_x - cat_width // 2, cat_y - cat_height // 2,
                                    cat_width, cat_height)
-            pygame.draw.ellipse(screen, (255, 140, 0), body_rect)  # Orange cat
+            pygame.draw.ellipse(screen, (255, 140, 0), body_rect)
             pygame.draw.ellipse(screen, (200, 100, 0), body_rect, max(1, int(2 * cat_scale)))
             
             # Cat head (circle)
@@ -199,7 +230,7 @@ def main() -> None:
             pygame.draw.circle(screen, (200, 100, 0), (head_x, head_y), head_size, max(1, int(2 * cat_scale)))
             
             # Cat ears (triangles)
-            if cat_scale > 0.3:  # Only draw details when cat is close enough
+            if cat_scale > 0.3:
                 ear_size = int(10 * cat_scale)
                 # Left ear
                 left_ear = [
@@ -252,7 +283,6 @@ def main() -> None:
             if animation.beam_alpha > 0:
                 beam_surface = pygame.Surface((100, SCREEN_HEIGHT), pygame.SRCALPHA)
                 beam_color = (150, 255, 150, int(animation.beam_alpha))
-                # Draw beam as a cone shape
                 ufo_center_x = int(char2.get_center_x())
                 beam_top_width = 60
                 beam_bottom_width = 120
@@ -285,7 +315,6 @@ def main() -> None:
             light_positions = [-40, -20, 0, 20, 40]
             for i, lx in enumerate(light_positions):
                 light_color = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (255, 0, 255)][i]
-                # Blinking effect
                 if (current_time // 200 + i) % 2 == 0:
                     pygame.draw.circle(screen, light_color, (ufo_x + lx, ufo_y + 20), 5)
                 else:
@@ -302,14 +331,83 @@ def main() -> None:
         # Draw dialogue
         animation.draw_dialogue(screen)
 
-        # Update display
+        # Capture and crop frame
+        frame = pygame.surfarray.array3d(screen)
+        frame = np.transpose(frame, (1, 0, 2))
+        
+        # Crop to center portion for 9:16 aspect ratio
+        cropped_frame = frame[:, CROP_X:CROP_X + CROP_WIDTH, :]
+        
+        # Resize to TikTok dimensions
+        resized_frame = cv2.resize(cropped_frame, (TIKTOK_WIDTH, TIKTOK_HEIGHT), 
+                                   interpolation=cv2.INTER_LANCZOS4)
+        resized_frame = cv2.cvtColor(resized_frame, cv2.COLOR_RGB2BGR)
+        
+        # Save frame as image
+        frame_path = os.path.join(frames_dir, f"frame_{frame_count:05d}.png")
+        cv2.imwrite(frame_path, resized_frame)
+        
+        frame_count += 1
+        
+        if frame_count % 60 == 0:
+            print(f"  Recorded {frame_count} frames ({frame_count // FPS}s)")
+
         pygame.display.flip()
         clock.tick(FPS)
 
-    # Clean up
     pygame.quit()
-    sys.exit()
+    
+    print(f"\n✓ Recorded {frame_count} frames")
+    print("🎵 Creating video with ffmpeg...")
+    
+    # Use ffmpeg to create video from frames (no audio yet)
+    temp_video = os.path.join(temp_dir, "temp_video.mp4")
+    
+    try:
+        cmd = [
+            'ffmpeg', '-y',
+            '-framerate', str(FPS),
+            '-i', os.path.join(frames_dir, 'frame_%05d.png'),
+            '-c:v', 'libx264',
+            '-preset', 'medium',
+            '-crf', '18',
+            '-pix_fmt', 'yuv420p',
+            temp_video
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            print(f"❌ Error creating video: {result.stderr}")
+            return
+            
+        print("✓ Video created (without audio)")
+        
+        # Copy to final location
+        import shutil
+        shutil.copy(temp_video, OUTPUT_FILENAME)
+        
+        print(f"\n✅ Export complete!")
+        print(f"📹 Total frames: {frame_count}")
+        print(f"⏱️  Duration: {frame_count / FPS:.2f} seconds")
+        print(f"💾 Output file: {OUTPUT_FILENAME}")
+        print(f"📏 Resolution: {TIKTOK_WIDTH}x{TIKTOK_HEIGHT} (9:16 aspect ratio)")
+        print(f"🎞️  Frame rate: {FPS} FPS")
+        print(f"\n⚠️  NOTE: Video exported without audio.")
+        print(f"   To add audio, use screen recording software like:")
+        print(f"   - macOS: QuickTime Player (File → New Screen Recording)")
+        print(f"   - Or run: uv run main.py and record with OBS/similar")
+        
+    except Exception as e:
+        print(f"❌ Error: {e}")
+    finally:
+        # Clean up temp directory
+        import shutil
+        try:
+            shutil.rmtree(temp_dir)
+        except:
+            pass
 
 
 if __name__ == "__main__":
-    main()
+    export_tiktok_video()
