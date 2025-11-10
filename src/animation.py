@@ -52,6 +52,7 @@ class AnimationController:
         walking_sound: Optional[pygame.mixer.Sound],
         collision_sound: Optional[pygame.mixer.Sound],
         meow_sound: Optional[pygame.mixer.Sound],
+        spaceship_sound: Optional[pygame.mixer.Sound],
     ):
         """
         Initialize the animation controller.
@@ -63,6 +64,7 @@ class AnimationController:
             walking_sound: Walking sound effect
             collision_sound: Collision sound effect
             meow_sound: Cat meow sound effect
+            spaceship_sound: Spaceship/UFO sound effect
         """
         self.char1 = char1
         self.char2 = char2
@@ -70,6 +72,7 @@ class AnimationController:
         self.walking_sound = walking_sound
         self.collision_sound = collision_sound
         self.meow_sound = meow_sound
+        self.spaceship_sound = spaceship_sound
 
         self.phase = AnimationPhase.CAT_RUN
         self.dialogue_timer = 0
@@ -92,6 +95,7 @@ class AnimationController:
         self.abduction_start_time = 0
         self.ufo_y = -100
         self.beam_alpha = 0
+        self.spaceship_sound_played = False
         
         # Cat run tracking
         self.cat_start_time = 0
@@ -456,6 +460,12 @@ class AnimationController:
         self.current_dialogue = ""
         self.ufo_y = -100
         self.beam_alpha = 0
+        self.spaceship_sound_played = False
+        
+        # Play spaceship sound effect when UFO appears
+        if self.spaceship_sound:
+            self.spaceship_sound.play()
+            self.spaceship_sound_played = True
     
     def _update_alien_abduction(self, current_time: int) -> None:
         """Update alien abduction phase - char2 gets beamed up casually."""

@@ -132,6 +132,14 @@ def main() -> None:
     except (FileNotFoundError, pygame.error) as e:
         print(f"Warning: Could not load meow sound: {e}")
         meow_sound = None
+    
+    # Load spaceship sound effect
+    try:
+        spaceship_sound = pygame.mixer.Sound("assets/000_spaceship.wav")
+        print("✓ Loaded spaceship sound effect")
+    except (FileNotFoundError, pygame.error) as e:
+        print(f"Warning: Could not load spaceship sound: {e}")
+        spaceship_sound = None
 
     # Create characters with different voices
     char1 = Character(
@@ -151,7 +159,7 @@ def main() -> None:
     char2.direction = -1  # Moving left
 
     # Initialize animation controller
-    animation = AnimationController(char1, char2, audio_manager, walking_sound, collision_sound, meow_sound)
+    animation = AnimationController(char1, char2, audio_manager, walking_sound, collision_sound, meow_sound, spaceship_sound)
 
     # Main game loop
     running = True
